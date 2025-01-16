@@ -3,7 +3,7 @@ import { AssistantAdminApi, AssistantApi, AssistantMultipartApi, Configuration, 
 
 
 const globalConfig: Configuration = new Configuration({basePath: Properties.backendUrl});
-const authenticateUrl = Properties.authUrl; 
+const authenticateUrl = Properties.authUrl;
 
 const redirectWrapper = (apiClass) => {
   const prototype = Object.getPrototypeOf(apiClass);
@@ -12,11 +12,11 @@ const redirectWrapper = (apiClass) => {
       const originalFunction = apiClass[key];
       apiClass[key] = function() {
         return originalFunction.apply(this, arguments).catch((err) => {
-	    	if (err.response && err.response.status === 499) {
-	    	    document.cookie = "nav=" + window.location.pathname;
-	            window.location.assign(authenticateUrl);
-	        }
-	        throw err;
+          if (err.response && err.response.status === 499) {
+            document.cookie = 'nav=' + window.location.pathname;
+            window.location.assign(authenticateUrl);
+          }
+          throw err;
 		});
       }
     }
@@ -25,7 +25,7 @@ const redirectWrapper = (apiClass) => {
 }
 
 export const chatbotAPI = redirectWrapper(new AssistantApi(globalConfig));
-export const assistantMultiPartAPI = redirectWrapper(new AssistantMultipartApi(globalConfig));
+export const chatbotMultiPartAPI = redirectWrapper(new AssistantMultipartApi(globalConfig));
 export const assistantAdminAPI = redirectWrapper(new AssistantAdminApi(globalConfig));
 export const knowledgeSourceAPI = redirectWrapper(new ContentRetrieverConnectionAdminApi(globalConfig));
 export const llmConnectionAPI = redirectWrapper(new LLMConnectionAdminApi(globalConfig));

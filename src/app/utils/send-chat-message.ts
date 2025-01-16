@@ -1,7 +1,8 @@
+import { chatbotAPI, chatbotMultiPartAPI } from '@app/adapters/APIExporter';
 import { UserFacingFile } from '@app/types/UserFacingFile';
+import { AssistantChatMessage } from '@sdk/model';
+import type { AxiosResponse, RawAxiosRequestConfig } from 'axios';
 
-const url = process.env.REACT_APP_ROUTER_URL ?? '';
-const urlMultipart = process.env.REACT_APP_ROUTER_MULTIPART_URL ?? '';
 
 // TODO: When backend supports persistent files (ie, with a separate file-upload endpoint),
 //  this message interface can be changed to use file references in the message. Alternatively,
@@ -13,84 +14,38 @@ export interface OutgoingChatMessage {
   files: UserFacingFile[];
 }
 
-/**
- * Support function to build a {@link RequestInit} object for use with {@link fetch()}. This function constructs
- * a request that will send a multipart request, including both chat message JSON and document parts.
- *
- * @param chatJson the chat message JSON string
- * @param files an array of files to send
- */
-function buildMultipartRequestInit(chatJson: string, files: UserFacingFile[]): RequestInit {
-  const formData = new FormData();
-
-  // Include JSON chat request as first multipart part, named "jsonRequest" and of type "application/json"
-  formData.append('jsonRequest', new Blob(
-    [
-      chatJson
-    ], {
-      type: 'application/json',
-    }
-  ));
-
-  // Include each attached file as subsequent multipart parts, all having part name "document".
-  // Mimetype will be set automatically from the Blob (which is likely all File types, a subclass of Blob)
-  files.forEach((file: UserFacingFile) => formData.append('document', file.blob))
-
-  return {
-    method: 'POST',
-    headers: {
-      // Do not include Content-Type; fetch will handle multipart content-type automatically
-    },
-    body: formData
-  };
-}
-
-/**
- * Support function to build a {@link RequestInit} object for use with {@link fetch()}. This function constructs
- * a request that only includes a JSON chat request and doesn't use multipart.
- *
- * @param chatJson the JSON chat request in string form
- */
-function buildStandardRequestInit(chatJson: string): RequestInit {
-  return {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: chatJson
-  };
-}
-
 export async function sendChatMessage(
   message: OutgoingChatMessage,
   signal?: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> {
   const useMultipart: boolean = message.files.length > 0;
 
-  const networkChatRequest = JSON.stringify({
+  const assistantChatMessage: AssistantChatMessage = {
     message: message.message,
-    assistantName: message.assistantName
-  });
+    assistantName: message.assistantName,
+  }
+
+  const axiosOptions: RawAxiosRequestConfig = {
+    signal: signal,
+  }
+
+  let response: AxiosResponse<string[], never>;
 
   // Call a different API endpoint depending upon whether there are files to upload or not.
   // NOTE: We could just make all calls go to the multipart endpoint, but I expect that endpoint will be removed
   //  once persistent files are an option on the backend. As such, it seems better to keep the more straightforward
   //  simple POST request here for use in the future.
-  let fetchRequest: RequestInit;
   if (useMultipart) {
-    fetchRequest = buildMultipartRequestInit(networkChatRequest, message.files)
+    response = await chatbotMultiPartAPI.assistantChatStreamingMp(
+      assistantChatMessage,
+      message.files?.map((file: UserFacingFile) => file.blob),
+      axiosOptions
+    );
   } else {
-    fetchRequest = buildStandardRequestInit(networkChatRequest);
+    response = await chatbotAPI.assistantChatStreaming(assistantChatMessage, axiosOptions);
   }
 
-  fetchRequest.signal = signal;
-
-  const response = await fetch(
-    useMultipart? urlMultipart : url,
-    fetchRequest
-  );
-
-  if (!response.ok || !response.body) {
+  if (response.status < 200 || response.status >= 400 || !response.data) {
     switch (response.status) {
       case 500:
         throw new Error('500');
@@ -103,6 +58,6 @@ export async function sendChatMessage(
 
   // TODO: Move the response parsing here, and offer callbacks or other mechanism for signalling new sources and new
   //  chat message text.
-  return response.body;
+  return ???;
 }
 
